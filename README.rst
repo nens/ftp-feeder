@@ -1,7 +1,7 @@
 ftp-feeder
 ==========================================
 
-TODO
+Scripts for syncing data to an FTP server from various sources. 
 
 
 Installation

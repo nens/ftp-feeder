@@ -17,7 +17,8 @@ tests_require = [
 
 setup(name='ftp_feeder',
       version=version,
-      description=('TODO copy from git repo'),
+      description=('Scripts for syncing data to an '
+                   'FTP server from various sources.'),
       long_description=long_description,
       # Get strings from http://www.python.org/pypi?%3Aaction=list_classifiers
       classifiers=[],
