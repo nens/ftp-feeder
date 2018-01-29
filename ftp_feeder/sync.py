@@ -7,14 +7,25 @@ from __future__ import unicode_literals
 from __future__ import absolute_import
 from __future__ import division
 
+from ftplib import FTP
 import argparse
-import ftplib
 
 from ftp_feeder import settings
 
 
 def sync():
-    print(settings.msg)
+    for sync in settings.SYNCS:
+        # source
+        source = sync['source']
+        with FTP(**source['connect']) as source_ftp:
+            source_ftp.cwd(source['dir'])
+            print(source_ftp.nlst())
+
+        # target
+        target = sync['target']
+        with FTP(**target['connect']) as target_ftp:
+            target_ftp.cwd(target['dir'])
+            print(target_ftp.mlsd())
 
 
 def get_parser():
