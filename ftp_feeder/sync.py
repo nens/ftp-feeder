@@ -1,6 +1,19 @@
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 # -*- coding: utf-8 -*-
-""" Sync configured sources to FTP server. """
+"""
+Sync configured datasets from one FTP server to another.
+
+SYNC operations can be defined in a localsettings file. A number of factors
+make this complicated.
+
+- The source files may have no full timestamp.
+- Missing timestamp are inferred from modification time.
+- Only FTP LIST command is available to get modification times.
+- Some datasets have enumerations in them.
+- Some datasets have a significantly different naming.
+- Some sources share a folder with other datasets.
+- We retain only a partial history on the target FTP.
+"""
 
 from __future__ import print_function
 from __future__ import unicode_literals
@@ -30,43 +43,73 @@ class Parser(object):
             fields = line.split()
             name = fields[8]
             time = ' '.join(fields[5:8])
-            
+
             if ':' in time:
                 # Mmm dd hh:mm, within past 180 days
                 datetime = Datetime.strptime(
                     time, '%b %d %H:%M',
-                ).replace(year=now.year)
+                ).replace(year=now.year, minute=0, second=0, microsecond=0)
                 if datetime > now:
-                     datetime = datetime.replace(year=datetime.year - 1)
+                    datetime = datetime.replace(year=datetime.year - 1)
             else:
                 # Mmm dd yyyy, older than 180 days
                 datetime = Datetime.strptime(time, '%b %d %Y')
 
             yield datetime, name
-        
+
+
+class Synchronizer(object):
+    def __init__(self):
+        # connect
+        self.source = FTP(**settings.SOURCE)
+        self.target = FTP(**settings.TARGET)
+
+    def synchronize(self, sync):
+        # determine sources
+        source = sync['source']
+        self.source.cwd(source['dir'])
+        parser = Parser()
+        self.source.retrbinary('LIST', parser)
+
+        # make a dict of available sources by date
+        threshold = Datetime.now() - Timedelta(**sync['keep'])
+        source_dict = {}
+        for datetime, name in parser:
+            # skip ignored sources
+            ignore = source.get('ignore')
+            if ignore and ignore in name:
+                continue
+            # skip outdated sources
+            if datetime < threshold:
+                continue
+            replace_kwargs = {k: int(name[v])
+                              for k, v in source['parse'].items()}
+            source_dict[datetime.replace(**replace_kwargs)] = name
+
+        # make a dict of possible targets by date
+        target = sync['target']
+        target_dict = {}
+        for datetime, name in source_dict.items():
+            parts = []
+            for item in target['template']:
+                if isinstance(item, slice):
+                    parts.append(name[item])
+                else:
+                    parts.append(datetime.strftime(item))
+            target_dict[datetime] = ''.join(parts)
+
+        print(source_dict)
+        print(target_dict)
+        return
+
+        # make similar dict for target (parse by template)
+        self.target.cwd(target['dir'])
 
 
 def sync():
+    synchronizer = Synchronizer()
     for sync in settings.SYNCS:
-        # source
-        source = sync['source']
-        with FTP(**source['connect']) as source_ftp:
-            source_ftp.cwd(source['dir'])
-            parser = Parser()
-            source_ftp.retrbinary('LIST', parser)
-
-            # for all parsed stuf, store recent stuff in dict.
-            threshold = Datetime.now() - Timedelta(**sync['keep'])
-            available = {datetime: name
-                         for datetime, name in parser if datetime > threshold}
-            print(available)
-            exit()
-
-
-        # target
-        target = sync['target']
-        with FTP(**target['connect']) as target_ftp:
-            target_ftp.cwd(target['dir'])
+        synchronizer.synchronize(sync)
 
 
 def get_parser():
