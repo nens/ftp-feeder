@@ -33,6 +33,7 @@ from ftp_feeder import settings
 
 logging.basicConfig(
     level=logging.INFO,
+    format='%(asctime)s %(message)s',
     filename=join(settings.LOG_DIR, 'sync.log'),
 )
 logger = logging.getLogger(__name__)
