@@ -138,7 +138,6 @@ class Synchronizer(object):
             data.seek(0)
             target_path = join(target_dir, target_name)
             target_path_in = target_path + '.in'
-            logger.info(target_path_in)
             self.target.storbinary('STOR ' + target_path_in, data)
             self.target.rename(target_path_in, target_path)
 
