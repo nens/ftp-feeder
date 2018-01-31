@@ -114,8 +114,8 @@ class Synchronizer(object):
                     parts.append(datetime.strftime(item))
             transfer[''.join(parts)] = name
 
-        self.target.cwd(target['dir'])
-        for name in self.target.nlst():
+        target_dir = target['dir']
+        for name in self.target.nlst(target_dir):
             if name in transfer:
                 # target file needs not to be transferred
                 del transfer[name]
@@ -123,15 +123,18 @@ class Synchronizer(object):
             datetime = Datetime.strptime(name[target['timestamp']], '%Y%m%d%H')
             if datetime < threshold:
                 logger.info('Remove %s', name)
-                self.target.delete(name)
+                self.target.delete(join(target_dir, name))
 
         for target_name, source_name in transfer.items():
             logger.info('Copy %s to %s', source_name, target_name)
             data = io.BytesIO()
             self.source.retrbinary('RETR ' + source_name, data.write)
             data.seek(0)
-            self.target.storbinary('STOR ' + target_name + '.in', data)
-            self.target.rename(target_name + '.in', target_name)
+            target_path = join(target_dir, target_name)
+            target_path_in = target_path + '.in'
+            logger.info(target_path_in)
+            self.target.storbinary('STOR ' + target_path_in, data)
+            self.target.rename(target_path_in, target_path)
 
 
 def sync():
