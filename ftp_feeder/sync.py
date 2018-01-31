@@ -48,7 +48,7 @@ class Parser(object):
                 # Mmm dd hh:mm, within past 180 days
                 datetime = Datetime.strptime(
                     time, '%b %d %H:%M',
-                ).replace(year=now.year, minute=0, second=0, microsecond=0)
+                ).replace(year=now.year, minute=0)
                 if datetime > now:
                     datetime = datetime.replace(year=datetime.year - 1)
             else:
@@ -59,21 +59,22 @@ class Parser(object):
 
 
 class Synchronizer(object):
+    """ Keep the connections and synchronize per dataset. """
     def __init__(self):
         # connect
         self.source = FTP(**settings.SOURCE)
         self.target = FTP(**settings.TARGET)
 
-    def synchronize(self, sync):
+    def synchronize(self, dataset):
         # determine sources
-        source = sync['source']
+        source = dataset['source']
         self.source.cwd(source['dir'])
         parser = Parser()
         self.source.retrbinary('LIST', parser)
 
         # make a dict of available sources by date
-        threshold = Datetime.now() - Timedelta(**sync['keep'])
-        source_dict = {}
+        threshold = Datetime.now() - Timedelta(**dataset['keep'])
+        inserts = []
         for datetime, name in parser:
             # skip ignored sources
             ignore = source.get('ignore')
@@ -82,34 +83,47 @@ class Synchronizer(object):
             # skip outdated sources
             if datetime < threshold:
                 continue
+            # use the parse item to use specific time attributes from filename
             replace_kwargs = {k: int(name[v])
                               for k, v in source['parse'].items()}
-            source_dict[datetime.replace(**replace_kwargs)] = name
+            inserts.append({
+                'datetime': datetime.replace(**replace_kwargs),
+                'source': name,
+            })
 
         # make a dict of possible targets by date
-        target = sync['target']
-        target_dict = {}
-        for datetime, name in source_dict.items():
+        target = dataset['target']
+        for insert in inserts:
+            # construct target name from template items
             parts = []
             for item in target['template']:
                 if isinstance(item, slice):
                     parts.append(name[item])
                 else:
                     parts.append(datetime.strftime(item))
-            target_dict[datetime] = ''.join(parts)
+            insert['target'] = ''.join(parts)
+            del insert['datetime']
 
-        print(source_dict)
-        print(target_dict)
+        print(inserts)
         return
 
-        # make similar dict for target (parse by template)
         self.target.cwd(target['dir'])
+        # make similar dict for target (parse by template)
+        # TODO
+        # get nlst as set
+        # drop inserts if name already there
+        # parse names
+        # populate delete list
+
+        # implement atomic copier with a .in file and a rename operation
+        # delete according to delete list
+        # insert according to insert list
 
 
 def sync():
     synchronizer = Synchronizer()
-    for sync in settings.SYNCS:
-        synchronizer.synchronize(sync)
+    for dataset in settings.DATASETS:
+        synchronizer.synchronize(dataset)
 
 
 def get_parser():
