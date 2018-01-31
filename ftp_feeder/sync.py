@@ -23,7 +23,7 @@ from __future__ import division
 from datetime import datetime as Datetime
 from datetime import timedelta as Timedelta
 from ftplib import FTP
-from os.path import join
+from os.path import basename, join
 
 import argparse
 import logging
@@ -115,16 +115,22 @@ class Synchronizer(object):
             transfer[''.join(parts)] = name
 
         target_dir = target['dir']
-        for name in self.target.nlst(target_dir):
-            if name in transfer:
-                # target file needs not to be transferred
-                del transfer[name]
+        for target_path in self.target.nlst(target_dir):
+            target_name = basename(target_path)
 
-            datetime = Datetime.strptime(name[target['timestamp']], '%Y%m%d%H')
+            # remove from transfer dictionary if it is already present
+            if target_name in transfer:
+                del transfer[target_name]
+
+            # find old targets by name parsing and delete them
+            datetime = Datetime.strptime(
+                target_name[target['timestamp']], '%Y%m%d%H',
+            )
             if datetime < threshold:
                 logger.info('Remove %s', name)
                 self.target.delete(join(target_dir, name))
 
+        # transfer the rest
         for target_name, source_name in transfer.items():
             logger.info('Copy %s to %s', source_name, target_name)
             data = io.BytesIO()
