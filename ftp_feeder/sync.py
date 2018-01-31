@@ -23,22 +23,35 @@ from __future__ import division
 from datetime import datetime as Datetime
 from datetime import timedelta as Timedelta
 from ftplib import FTP
+from os.path import join
 
 import argparse
+import logging
+import io
 
 from ftp_feeder import settings
+
+logging.basicConfig(
+    level=logging.INFO,
+    filename=join(settings.LOG_DIR, 'sync.log'),
+)
+logger = logging.getLogger(__name__)
 
 
 class Parser(object):
     """ Parse the results of the FTP LIST command. """
+    def __init__(self):
+        self.data = io.BytesIO()
+
     def __call__(self, data):
         """ Decode and split. """
-        self.lines = data.decode('ascii').split('\r\n')[:-1]
+        self.data.write(data)
 
     def __iter__(self):
         """ Return generator of (name, datetime) tuples. """
+        lines = self.data.getvalue().decode('ascii').split('\r\n')[:-1]
         now = Datetime.now()
-        for line in self.lines:
+        for line in lines:
             # take it apart
             fields = line.split()
             name = fields[8]
@@ -55,7 +68,7 @@ class Parser(object):
                 # Mmm dd yyyy, older than 180 days
                 datetime = Datetime.strptime(time, '%b %d %Y')
 
-            yield datetime, name
+            yield name, datetime
 
 
 class Synchronizer(object):
@@ -74,8 +87,8 @@ class Synchronizer(object):
 
         # make a dict of available sources by date
         threshold = Datetime.now() - Timedelta(**dataset['keep'])
-        inserts = []
-        for datetime, name in parser:
+        work = []  # name, datetime tuples
+        for name, datetime in parser:
             # skip ignored sources
             ignore = source.get('ignore')
             if ignore and ignore in name:
@@ -86,14 +99,12 @@ class Synchronizer(object):
             # use the parse item to use specific time attributes from filename
             replace_kwargs = {k: int(name[v])
                               for k, v in source['parse'].items()}
-            inserts.append({
-                'datetime': datetime.replace(**replace_kwargs),
-                'source': name,
-            })
+            work.append((name, datetime.replace(**replace_kwargs)))
 
-        # make a dict of possible targets by date
+        # make a dict of target: source names
         target = dataset['target']
-        for insert in inserts:
+        transfer = {}
+        for name, datetime in work:
             # construct target name from template items
             parts = []
             for item in target['template']:
@@ -101,23 +112,26 @@ class Synchronizer(object):
                     parts.append(name[item])
                 else:
                     parts.append(datetime.strftime(item))
-            insert['target'] = ''.join(parts)
-            del insert['datetime']
-
-        print(inserts)
-        return
+            transfer[''.join(parts)] = name
 
         self.target.cwd(target['dir'])
-        # make similar dict for target (parse by template)
-        # TODO
-        # get nlst as set
-        # drop inserts if name already there
-        # parse names
-        # populate delete list
+        for name in self.target.nlst():
+            if name in transfer:
+                # target file needs not to be transferred
+                del transfer[name]
 
-        # implement atomic copier with a .in file and a rename operation
-        # delete according to delete list
-        # insert according to insert list
+            datetime = Datetime.strptime(name[target['timestamp']], '%Y%m%d%H')
+            if datetime < threshold:
+                logger.info('Remove %s', name)
+                self.target.delete(name)
+
+        for target_name, source_name in transfer.items():
+            logger.info('Copy %s to %s', source_name, target_name)
+            data = io.BytesIO()
+            self.source.retrbinary('RETR ' + source_name, data.write)
+            data.seek(0)
+            self.target.storbinary('STOR ' + target_name + '.in', data)
+            self.target.rename(target_name + '.in', target_name)
 
 
 def sync():
@@ -136,4 +150,7 @@ def main():
     """ Call hillshade with args from parser. """
     # TODO logging
     kwargs = vars(get_parser().parse_args())
-    sync(**kwargs)
+    try:
+        sync(**kwargs)
+    except:
+        logger.exception('Error:')

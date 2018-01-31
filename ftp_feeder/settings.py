@@ -10,6 +10,11 @@ from __future__ import unicode_literals
 from __future__ import absolute_import
 from __future__ import division
 
+from os.path import dirname, join
+
+# logging
+LOG_DIR = join(dirname(dirname(__file__)), 'var', 'log')
+
 # import local settings
 try:
     from .localsettings import *  # NOQA
