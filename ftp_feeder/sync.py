@@ -115,6 +115,7 @@ class Synchronizer(object):
                     parts.append(datetime.strftime(item))
             transfer[''.join(parts)] = name
 
+        # list and inspect target dir
         target_dir = target['dir']
         for target_path in self.target.nlst(target_dir):
             target_name = basename(target_path)
@@ -128,8 +129,8 @@ class Synchronizer(object):
                 target_name[target['timestamp']], '%Y%m%d%H',
             )
             if datetime < threshold:
-                logger.info('Remove %s', name)
-                self.target.delete(join(target_dir, name))
+                logger.info('Remove %s', target_name)
+                self.target.delete(target_path)
 
         # transfer the rest
         for target_name, source_name in transfer.items():
