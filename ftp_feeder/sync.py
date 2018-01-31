@@ -8,6 +8,7 @@ from __future__ import absolute_import
 from __future__ import division
 
 from datetime import datetime as Datetime
+from datetime import timedelta as Timedelta
 from ftplib import FTP
 
 import argparse
@@ -23,7 +24,7 @@ class Parser(object):
 
     def __iter__(self):
         """ Return generator of (name, datetime) tuples. """
-        utcnow = Datetime.utcnow()
+        now = Datetime.now()
         for line in self.lines:
             # take it apart
             fields = line.split()
@@ -34,14 +35,14 @@ class Parser(object):
                 # Mmm dd hh:mm, within past 180 days
                 datetime = Datetime.strptime(
                     time, '%b %d %H:%M',
-                ).replace(year=utcnow.year)
-                if datetime < utcnow:
-                    yield name, datetime
-                else:
-                    yield name, datetime.replace(now.year - 1)
+                ).replace(year=now.year)
+                if datetime > now:
+                     datetime = datetime.replace(year=datetime.year - 1)
             else:
                 # Mmm dd yyyy, older than 180 days
-                yield Datetime.strptime(time, '%b %d %Y')
+                datetime = Datetime.strptime(time, '%b %d %Y')
+
+            yield datetime, name
         
 
 
@@ -53,9 +54,14 @@ def sync():
             source_ftp.cwd(source['dir'])
             parser = Parser()
             source_ftp.retrbinary('LIST', parser)
-            for name, datetime in parser:
-                print(name, datetime)
+
+            # for all parsed stuf, store recent stuff in dict.
+            threshold = Datetime.now() - Timedelta(**sync['keep'])
+            available = {datetime: name
+                         for datetime, name in parser if datetime > threshold}
+            print(available)
             exit()
+
 
         # target
         target = sync['target']
