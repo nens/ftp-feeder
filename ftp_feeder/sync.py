@@ -56,6 +56,7 @@ class Parser(object):
             # take it apart
             fields = line.split()
             name = fields[8]
+            size = int(fields[4])
             time = ' '.join(fields[5:8])
 
             if ':' in time:
@@ -69,7 +70,7 @@ class Parser(object):
                 # Mmm dd yyyy, older than 180 days
                 datetime = Datetime.strptime(time, '%b %d %Y')
 
-            yield name, datetime
+            yield name, datetime, size
 
 
 class Synchronizer(object):
@@ -89,7 +90,7 @@ class Synchronizer(object):
         # make a dict of available sources by date
         threshold = Datetime.now() - Timedelta(**dataset['keep'])
         work = []  # name, datetime tuples
-        for name, datetime in parser:
+        for name, datetime, size in parser:
             # skip ignored sources
             ignore = source.get('ignore')
             if ignore and ignore in name:
@@ -100,12 +101,12 @@ class Synchronizer(object):
             # use the parse item to use specific time attributes from filename
             replace_kwargs = {k: int(name[v])
                               for k, v in source['parse'].items()}
-            work.append((name, datetime.replace(**replace_kwargs)))
+            work.append((name, datetime.replace(**replace_kwargs), size))
 
         # make a dict of target: source names
         target = dataset['target']
         transfer = {}
-        for name, datetime in work:
+        for name, datetime, size in work:
             # construct target name from template items
             parts = []
             for item in target['template']:
@@ -135,13 +136,24 @@ class Synchronizer(object):
         # transfer the rest
         for target_name, source_name in transfer.items():
             logger.info('Copy %s to %s', source_name, target_name)
+
+            # read data from source and check size
             data = io.BytesIO()
             self.source.retrbinary('RETR ' + source_name, data.write)
+            logger.info('Retrieved %s of %s bytes', data.tell(), size)
+
+            # write data to target and check size
             data.seek(0)
             target_path = join(target_dir, target_name)
             target_path_in = target_path + '.in'
             self.target.storbinary('STOR ' + target_path_in, data)
+            logger.info('Stored %s of %s bytes', data.tell(), size)
             self.target.rename(target_path_in, target_path)
+
+            # read again to check stored size
+            data = io.BytesIO()
+            self.target.retrbinary('RETR ' + target_path, data.write)
+            logger.info('Checked %s of %s bytes', data.tell(), size)
 
 
 def sync():
@@ -152,7 +164,11 @@ def sync():
 
 def get_parser():
     """ Return argument parser. """
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
     return parser
 
 
@@ -162,5 +178,5 @@ def main():
     kwargs = vars(get_parser().parse_args())
     try:
         sync(**kwargs)
-    except:
+    except Exception:
         logger.exception('Error:')

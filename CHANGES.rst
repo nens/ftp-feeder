@@ -6,3 +6,5 @@ Changelog of ftp-feeder
 ----------------
 
 - Initial project setup.
+
+- Added extra checks for incomplete files.
