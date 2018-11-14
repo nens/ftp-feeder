@@ -2,7 +2,7 @@ Changelog of ftp-feeder
 =======================
 
 
-0.1 (unreleased)
+0.1 (2018-11-14)
 ----------------
 
 - Initial project setup.
