@@ -153,8 +153,8 @@ class Synchronizer(object):
                 logger.info('Size mismatch, skipping this one.')
                 continue
 
-            # skip this one on null characters
-            if b'\x00' in data.getvalue():
+            # skip this one on null characters if they are not allowed
+            if not dataset.get('null', True) and b'\x00' in data.getvalue():
                 logger.info('Null characters found, skipping this one.')
                 continue
 
