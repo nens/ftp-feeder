@@ -2,6 +2,12 @@ Changelog of ftp-feeder
 =======================
 
 
+0.1.3 (unreleased)
+------------------
+
+- Nothing changed yet.
+
+
 0.1.2 (2018-11-19)
 ------------------
 
