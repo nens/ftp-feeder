@@ -2,7 +2,7 @@ Changelog of ftp-feeder
 =======================
 
 
-0.1.2 (unreleased)
+0.1.2 (2018-11-19)
 ------------------
 
 - Only disallow nulls if configured.
