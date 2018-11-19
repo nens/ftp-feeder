@@ -2,8 +2,8 @@ Changelog of ftp-feeder
 =======================
 
 
-0.2 (unreleased)
-----------------
+0.1.1 (2018-11-19)
+------------------
 
 - Act on extra checks and fix bug on size check.
 
