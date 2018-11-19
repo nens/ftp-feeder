@@ -103,7 +103,7 @@ class Synchronizer(object):
                               for k, v in source['parse'].items()}
             work.append((name, datetime.replace(**replace_kwargs), size))
 
-        # make a dict of target: source names
+        # make a dict of target_name: (source_name, size)
         target = dataset['target']
         transfer = {}
         for name, datetime, size in work:
@@ -114,12 +114,18 @@ class Synchronizer(object):
                     parts.append(name[item])
                 else:
                     parts.append(datetime.strftime(item))
-            transfer[''.join(parts)] = name
+            transfer[''.join(parts)] = name, size
 
         # list and inspect target dir
         target_dir = target['dir']
-        for target_path in self.target.nlst(target_dir):
-            target_name = basename(target_path)
+        for target_name_or_path in self.target.nlst(target_dir):
+            # it some servers return names, others return paths
+            if target_name_or_path.startswith(target_dir):
+                target_path = target_name_or_path
+                target_name = basename(target_path)
+            else:
+                target_name = target_name_or_path
+                target_path = join(target_dir, target_name)
 
             # remove from transfer dictionary if it is already present
             if target_name in transfer:
@@ -134,13 +140,23 @@ class Synchronizer(object):
                 self.target.delete(target_path)
 
         # transfer the rest
-        for target_name, source_name in transfer.items():
+        for target_name, (source_name, size) in transfer.items():
             logger.info('Copy %s to %s', source_name, target_name)
 
             # read data from source and check size
             data = io.BytesIO()
             self.source.retrbinary('RETR ' + source_name, data.write)
             logger.info('Retrieved %s of %s bytes', data.tell(), size)
+
+            # skip this one on size mismatch
+            if data.tell() != size:
+                logger.info('Size mismatch, skipping this one.')
+                continue
+
+            # skip this one on null characters
+            if b'\x00' in data.getvalue():
+                logger.info('Null characters found, skipping this one.')
+                continue
 
             # write data to target and check size
             data.seek(0)
