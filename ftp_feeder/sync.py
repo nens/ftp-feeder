@@ -163,13 +163,13 @@ class Synchronizer(object):
             target_path = join(target_dir, target_name)
             target_path_in = target_path + '.in'
             self.target.storbinary('STOR ' + target_path_in, data)
-            logger.info('Stored %s of %s bytes', data.tell(), size)
+            # logger.info('Stored %s of %s bytes', data.tell(), size)
             self.target.rename(target_path_in, target_path)
 
             # read again to check stored size
-            data = io.BytesIO()
-            self.target.retrbinary('RETR ' + target_path, data.write)
-            logger.info('Checked %s of %s bytes', data.tell(), size)
+            # data = io.BytesIO()
+            # self.target.retrbinary('RETR ' + target_path, data.write)
+            # logger.info('Checked %s of %s bytes', data.tell(), size)
 
 
 def sync():
