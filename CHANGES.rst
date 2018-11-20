@@ -2,7 +2,7 @@ Changelog of ftp-feeder
 =======================
 
 
-0.1.3 (unreleased)
+0.1.3 (2018-11-20)
 ------------------
 
 - Comment-out write and re-read checks since problem exists at source.
