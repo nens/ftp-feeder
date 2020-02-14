@@ -8,12 +8,9 @@ long_description = '\n\n'.join([
     open('CHANGES.rst').read(),
     ])
 
-install_requires = [
-    'setuptools',
-    ],
+install_requires = []
 
-tests_require = [
-    ]
+tests_require = ["flake8", "ipdb", "ipython", "pytest", "pytest-cov"]
 
 setup(name='ftp_feeder',
       version=version,

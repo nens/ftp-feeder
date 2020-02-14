@@ -15,11 +15,6 @@ make this complicated.
 - We retain only a partial history on the target FTP.
 """
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
-
 from datetime import datetime as Datetime
 from datetime import timedelta as Timedelta
 from ftplib import FTP

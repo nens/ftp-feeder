@@ -1,37 +1,18 @@
-# From https://github.com/github/gitignore/blob/master/Python.gitignore
-
-# Pyc/pyo files.
-*.py[co]
+# Cache
+__pycache__
 
 # Local configs
 ftp_feeder/local*
-ftp_feeder/*/local*
+
+# Local directories
+testdata
+var
 
 # Packages
-*.egg
 *.egg-info
-dist
-build
-eggs
-parts
-bin
-var
-sdist
-develop-eggs
-.installed.cfg
 
-# Installer logs
-pip-log.txt
-
-# Unit test / coverage reports
-.coverage
-.tox
-nosetests.xml
-
-#Mr Developer
-.mr.developer.cfg
-src
+# Virtualenv
+.venv
 
 # Ignore generated config files
-etc/*.nginx.conf
-etc/*.logrotate
+.idea

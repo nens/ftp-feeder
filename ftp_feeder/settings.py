@@ -4,16 +4,14 @@
 This is the global settings file. It imports from a localsettings.py, if it is
 available.
 """
+import pathlib
 
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
-from __future__ import division
+# directories
+PACKAGE_DIR = pathlib.Path(__file__).parent.parent
+LOG_DIR = PACKAGE_DIR / "var" / "log"
 
-from os.path import dirname, join
-
-# logging
-LOG_DIR = join(dirname(dirname(__file__)), 'var', 'log')
+# make sure they exist - there must be a better way
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # import local settings
 try:

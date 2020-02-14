@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+  lib:
+    build: .
+    depends_on:
+      - ftp
+    environment:
+      - DOCKER=True
+      - PYTHONUNBUFFERED=1
+      - SHELL=/bin/bash
+    volumes:
+      - ./:/code
+      - ~/.netrc:/home/nens/.netrc  # github authentication
+      - ~/.cache:/home/nens/.cache  # shared cache
+    command: tail -F anything
+  ftp:
+    image: stilliard/pure-ftpd
+    environment:
+      FTP_USER_NAME: nens
+      FTP_USER_PASS: nens
+      FTP_USER_HOME: /home/nens
