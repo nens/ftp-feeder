@@ -51,11 +51,22 @@ Installation::
     (virtualenv)$ pip install -e .
 
 
+Staging server installation
+---------------------------
+
+On the staging server currently the target ftp role is performed by a local
+vsftpd server, and a dedicated user. Its credentials are in the
+localsettings.py on that server.
+
+
 Configuration
 -------------
 
 Source and target FTP servers, as well as paths, templates and timestamps are
 all configured in a localsettings.py file on the server.
+
+Note that the sync script currently does not create directories, that has to be
+done manually.
 
 Synchronization is handled using cronjobs on the server::
 
