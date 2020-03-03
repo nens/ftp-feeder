@@ -57,8 +57,8 @@ class Parser(object):
             if ':' in time:
                 # Mmm dd hh:mm, within past 180 days
                 datetime = Datetime.strptime(
-                    time, '%b %d %H:%M',
-                ).replace(year=now.year, minute=0)
+                    f'{now.year} {time}', '%Y %b %d %H:%M',
+                ).replace(minute=0)
                 if datetime > now:
                     datetime = datetime.replace(year=datetime.year - 1)
             else:
