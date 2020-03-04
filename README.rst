@@ -63,13 +63,11 @@ Configuration
 -------------
 
 Source and target FTP servers, as well as paths, templates and timestamps are
-all configured in a localsettings.py file on the server.
+all configured in a localsettings.py file on the server. This may be symlinks
+to the configuration defined in the private enens/rr-task repository.
 
 Note that the sync script currently does not create directories, that has to be
 done manually.
 
-Synchronization is handled using cronjobs on the server::
-
-    # Harmonie, Hirlam, Synops and KNMI_STN are synced to open KNMI data
-    # m    h dom mon dow command
-    44     * *   *   *   /srv/ftp-feeder/.venv/bin/sync  # synops is last written at about 38!
+Synchronization is handled using cronjobs on the server, which can be found in
+the private nens/rr-task repository.
