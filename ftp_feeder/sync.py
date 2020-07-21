@@ -43,7 +43,10 @@ class Dataset:
         self.pattern = pattern
 
     def _verify(self, items, start_after_filename=""):
-        """ Return items that have modificationDate after item datetime.
+        """ Return verified items.
+
+        This uses the files API to check if the items' files exist and have
+        modificationDate after item's  datetime.
         """
         response = requests.get(
             self.url,
@@ -57,14 +60,14 @@ class Dataset:
         # lookup dictionary for modification times
         last_modified = {}
         for record in response.json()["files"]:
-            last_modified[record["filename"]] = Datetime.strptime(
-                record["lastModified"][:-6], "%Y-%m-%dT%H:%M:%S"
-            )
+            last_modified[record["filename"]] = record["lastModified"]
 
         # only items with modification date after product date are allowed
         verified = []
         for item in items:
-            if last_modified[item["filename"]] > item["datetime"]:
+            # note that "" will be smaller than any ISO datetime
+            item_last_modified = last_modified.get(item["filename"], "")
+            if item_last_modified > item["datetime"].isoformat():
                 verified.append(item)
 
         return verified
@@ -132,10 +135,10 @@ class Synchronizer(object):
         # determine sources
         dataset = Dataset(**source)
         items = dataset.latest(Timedelta(**keep) // dataset.timedelta)
-        target = dataset['target']
         transfer = {}
-        for filename, datetime in items:
-            transfer[datetime.strftime(target["pattern"])] = filename
+        for item in items:
+            filename = item["filename"]
+            transfer[item["datetime"].strftime(target["template"])] = filename
 
         # list and inspect target dir
         target_dir = target['dir']
