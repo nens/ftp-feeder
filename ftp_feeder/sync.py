@@ -131,7 +131,7 @@ class Synchronizer(object):
     def __init__(self):
         self.target = FTP(**settings.TARGET)
 
-    def synchronize(self, keep, source, target):
+    def synchronize(self, keep, text, source, target):
         # determine sources
         dataset = Dataset(**source)
         items = dataset.latest(Timedelta(**keep) // dataset.timedelta)
@@ -169,6 +169,11 @@ class Synchronizer(object):
             # read
             data = io.BytesIO(dataset.retrieve(source_name))
             logger.info('Retrieved %s', source_name)
+
+            # do not allow null characters in text format products
+            if text and b'\x00' in data.getvalue():
+                logger.info('Null characters found, skipping this one.')
+                continue
 
             # write
             target_path = join(target_dir, target_name)
