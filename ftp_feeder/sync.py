@@ -1,18 +1,6 @@
 # (c) Nelen & Schuurmans.  GPL licensed, see LICENSE.rst.
 # -*- coding: utf-8 -*-
-"""
-Sync configured datasets from one FTP server to another.
-
-SYNC operations can be defined in a localsettings file. A number of factors
-make this complicated.
-
-- The source files may have no full timestamp.
-- Missing timestamp are inferred from modification time.
-- Only FTP LIST command is available to get modification times.
-- Some datasets have enumerations in them.
-- Some datasets have a significantly different naming.
-- Some sources share a folder with other datasets.
-- We retain only a partial history on the target FTP.
+"""Sync configured datasets from the dataplatform API to an FTP server.
 """
 
 from datetime import datetime as Datetime
@@ -24,6 +12,8 @@ import argparse
 import logging
 import io
 
+import requests
+
 from ftp_feeder import settings
 
 logging.basicConfig(
@@ -34,87 +24,124 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class Parser(object):
-    """ Parse the results of the FTP LIST command. """
-    def __init__(self):
-        self.data = io.BytesIO()
+class Dataset:
+    URL = (
+        "https://api.dataplatform.knmi.nl/open-data/"
+        "datasets/{dataset}/versions/{version}/files/"
+    )
+    HEADERS = {"Authorization": settings.API_KEY}
 
-    def __call__(self, data):
-        """ Decode and split. """
-        self.data.write(data)
+    def __init__(self, dataset, version, step, pattern):
+        """Represents a Dataplatform Dataset.
 
-    def __iter__(self):
-        """ Return generator of (name, datetime) tuples. """
-        lines = self.data.getvalue().decode('ascii').split('\r\n')[:-1]
-        now = Datetime.now()
-        for line in lines:
-            # take it apart
-            fields = line.split()
-            name = fields[8]
-            size = int(fields[4])
-            time = ' '.join(fields[5:8])
+        Args:
+            dataset (str): dataset name
+            version (str): dataset version
+        """
+        self.url = self.URL.format(dataset=dataset, version=version)
+        self.timedelta = Timedelta(**step)
+        self.pattern = pattern
 
-            if ':' in time:
-                # Mmm dd hh:mm, within past 180 days
-                datetime = Datetime.strptime(
-                    f'{now.year} {time}', '%Y %b %d %H:%M',
-                ).replace(minute=0)
-                if datetime > now:
-                    datetime = datetime.replace(year=datetime.year - 1)
+    def _verify(self, items, start_after_filename=""):
+        """ Return items that have modificationDate after item datetime.
+        """
+        response = requests.get(
+            self.url,
+            headers=self.HEADERS,
+            params={
+                "maxKeys": len(items),
+                "startAfterFilename": start_after_filename,
+            }
+        )
+
+        # lookup dictionary for modification times
+        last_modified = {}
+        for record in response.json()["files"]:
+            last_modified[record["filename"]] = Datetime.strptime(
+                record["lastModified"][:-6], "%Y-%m-%dT%H:%M:%S"
+            )
+
+        # only items with modification date after product date are allowed
+        verified = []
+        for item in items:
+            if last_modified[item["filename"]] > item["datetime"]:
+                verified.append(item)
+
+        return verified
+
+    def latest(self, count=1):
+        """Return list of (filename, datetime) tuples.
+
+        Args:
+            count (int): Number of files in the past to list.
+
+        The result may be shorter then count because the API is actually used
+        to check if the expected files are actually available.
+        """
+        # determine the timestamps where files are expected
+        now = Datetime.utcnow()
+        midnight = Datetime(now.year, now.month, now.day)
+        step_of_day = ((now - midnight) // self.timedelta)
+        dt_last = midnight + self.timedelta * step_of_day
+
+        # note we generate one extra into the past for the
+        # startAfterFilename parameter
+        items = []
+        for stepcount in range(-count, 1):
+            datetime = dt_last + stepcount * self.timedelta
+            filename = datetime.strftime(self.pattern)
+            items.append({"filename": filename, "datetime": datetime})
+
+        # make to lists for the verification
+        start_after_filename = items[0]["filename"]
+        from_start = []
+        after_filename = []
+        for item in items[1:]:
+            if item["filename"] > start_after_filename:
+                after_filename.append(item)
             else:
-                # Mmm dd yyyy, older than 180 days
-                datetime = Datetime.strptime(time, '%b %d %Y')
+                from_start.append(item)
 
-            yield name, datetime, size
+        # verify lists using API
+        verified_from_start = self._verify(items=from_start)
+        verified_after_filename = self._verify(
+            items=after_filename, start_after_filename=start_after_filename,
+        )
+        return verified_after_filename + verified_from_start
+
+    def _get_download_url(self, filename):
+        """ Return temporary download url for filename.
+        """
+        response = requests.get(
+            "{url}/{filename}/url".format(url=self.url, filename=filename),
+            headers=self.HEADERS,
+        )
+        return response.json().get("temporaryDownloadUrl")
+
+    def retrieve(self, filename):
+        url = self._get_download_url(filename)
+        return requests.get(url).content
 
 
 class Synchronizer(object):
     """ Keep the connections and synchronize per dataset. """
     def __init__(self):
-        # connect
-        self.source = FTP(**settings.SOURCE)
         self.target = FTP(**settings.TARGET)
 
-    def synchronize(self, dataset):
+    def synchronize(self, keep, source, target):
         # determine sources
-        source = dataset['source']
-        self.source.cwd(source['dir'])
-        parser = Parser()
-        self.source.retrbinary('LIST', parser)
-
-        # make a dict of available sources by date
-        threshold = Datetime.now() - Timedelta(**dataset['keep'])
-        work = []  # name, datetime tuples
-        for name, datetime, size in parser:
-            # skip ignored sources
-            ignore = source.get('ignore')
-            if ignore and ignore in name:
-                continue
-            # skip outdated sources
-            if datetime < threshold:
-                continue
-            # use the parse item to use specific time attributes from filename
-            replace_kwargs = {k: int(name[v])
-                              for k, v in source['parse'].items()}
-            work.append((name, datetime.replace(**replace_kwargs), size))
-
-        # make a dict of target_name: (source_name, size)
+        dataset = Dataset(**source)
+        items = dataset.latest(Timedelta(**keep) // dataset.timedelta)
         target = dataset['target']
         transfer = {}
-        for name, datetime, size in work:
-            # construct target name from template items
-            parts = []
-            for item in target['template']:
-                if isinstance(item, slice):
-                    parts.append(name[item])
-                else:
-                    parts.append(datetime.strftime(item))
-            transfer[''.join(parts)] = name, size
+        for filename, datetime in items:
+            transfer[datetime.strftime(target["pattern"])] = filename
 
         # list and inspect target dir
         target_dir = target['dir']
+        threshold = Datetime.utcnow() - Timedelta(**keep)
         for target_name_or_path in self.target.nlst(target_dir):
-            # it some servers return names, others return paths
+            # some servers return names, others return paths
             if target_name_or_path.startswith(target_dir):
                 target_path = target_name_or_path
                 target_name = basename(target_path)
@@ -135,42 +162,23 @@ class Synchronizer(object):
                 self.target.delete(target_path)
 
         # transfer the rest
-        for target_name, (source_name, size) in transfer.items():
-            logger.info('Copy %s to %s', source_name, target_name)
+        for target_name, source_name in transfer.items():
+            # read
+            data = io.BytesIO(dataset.retrieve(source_name))
+            logger.info('Retrieved %s', source_name)
 
-            # read data from source and check size
-            data = io.BytesIO()
-            self.source.retrbinary('RETR ' + source_name, data.write)
-            logger.info('Retrieved %s of %s bytes', data.tell(), size)
-
-            # skip this one on size mismatch
-            if data.tell() != size:
-                logger.info('Size mismatch, skipping this one.')
-                continue
-
-            # skip this one on null characters if they are not allowed
-            if not dataset.get('null', True) and b'\x00' in data.getvalue():
-                logger.info('Null characters found, skipping this one.')
-                continue
-
-            # write data to target and check size
-            data.seek(0)
+            # write
             target_path = join(target_dir, target_name)
             target_path_in = target_path + '.in'
             self.target.storbinary('STOR ' + target_path_in, data)
-            # logger.info('Stored %s of %s bytes', data.tell(), size)
             self.target.rename(target_path_in, target_path)
-
-            # read again to check stored size
-            # data = io.BytesIO()
-            # self.target.retrbinary('RETR ' + target_path, data.write)
-            # logger.info('Checked %s of %s bytes', data.tell(), size)
+            logger.info('Stored %s', target_name)
 
 
 def sync():
     synchronizer = Synchronizer()
     for dataset in settings.DATASETS:
-        synchronizer.synchronize(dataset)
+        synchronizer.synchronize(**dataset)
 
 
 def get_parser():
@@ -185,7 +193,6 @@ def get_parser():
 
 def main():
     """ Call hillshade with args from parser. """
-    # TODO logging
     kwargs = vars(get_parser().parse_args())
     try:
         sync(**kwargs)
